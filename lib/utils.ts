@@ -1,28 +1,35 @@
-'use strict';
+import _ from 'lodash';
+import Bluebird from 'bluebird';
+import baseFs from 'fs';
+import path from 'path';
 
-const _ = require('lodash');
-const Promise = require('bluebird');
-const fs = Promise.promisifyAll(require('fs'));
-const path = require('path');
+const fs = Bluebird.promisifyAll(baseFs);
 
-exports.matchesFormats = (filePath, formats) => {
+export const matchesFormats = (filePath: string, formats: Array<string>): boolean => {
     return _.isEmpty(formats) || _.includes(formats, path.extname(filePath));
 };
 
-exports.isFile = (path) => fs.statAsync(path).then((stat) => stat.isFile());
+export const isFile = async (path: string): Promise<boolean> => {
+    const stat = await fs.statAsync(path);
 
-exports.getFilePaths = (basePath) => {
-    function readDirFiles(basePath) {
-        return fs.readdirAsync(basePath)
-            .then((paths) => {
-                return Promise.map(paths, (p) => exports.getFilePaths(path.join(basePath, p)))
-                    .then(_.flatten);
-            });
+    return stat.isFile();
+};
+
+export const getFilePaths = async (basePath: string): Promise<Array<string>> => {
+    async function readDirFiles(basePath: string): Promise<Array<string>> {
+        const paths = await fs.readdirAsync(basePath);
+        const subPaths = await Bluebird.map(paths, (p) => getFilePaths(path.join(basePath, p)));
+
+        return _.flatten(subPaths);
     }
 
-    return exports.isFile(basePath)
-        .then((isFile) => isFile ? [basePath] : readDirFiles(basePath))
-        .catch((err) => {
-            throw new Error(`Error while reading path "${basePath}"\n${err.stack || err.message || err}`);
-        });
+    try {
+        return await isFile(basePath) ? [basePath] : readDirFiles(basePath);
+    } catch (err: unknown) {
+        const errMessage = err instanceof Error
+            ? err.stack || err.message
+            : err;
+
+        throw new Error(`Error while reading path "${basePath}"\n${errMessage}`);
+    }
 };
