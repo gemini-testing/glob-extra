@@ -1,45 +1,52 @@
-'use strict';
+import path from 'path';
+import Bluebird from 'bluebird';
+import _ from 'lodash';
+import fg from 'fast-glob';
+import {Minimatch} from 'minimatch';
+import normalize from 'normalize-path';
 
-const path = require('path');
-const Promise = require('bluebird');
-const _ = require('lodash');
-const fg = require('fast-glob');
-const {Minimatch} = require('minimatch');
-const normalize = require('normalize-path');
-const defaults = require('./defaults');
-const utils = require('./utils');
+import defaults from './defaults';
+import utils from './utils';
 
-const getFilesByMask = (pattern, options) => fg(pattern, options);
+import type {GlobOpts, ExpandOpts} from './types';
+export type {GlobOpts, ExpandOpts};
 
-const expandPath = (basePath, options) => {
-    basePath = options.root ? path.resolve(options.root, basePath) : basePath;
+const getFilesByMask = (pattern: string | Array<string>, options: GlobOpts): Promise<Array<string>> => fg(pattern, options);
 
-    return utils.isFile(basePath)
-        .then((isFile) => isFile ? [basePath] : utils.getFilePaths(basePath))
-        .then((paths) => paths.filter((path) => utils.matchesFormats(path, options.formats)));
+const expandPath = async (basePath: string, options: ExpandOpts): Promise<Array<string>> => {
+    const resolvedBasePath = options.root ? path.resolve(options.root, basePath) : basePath;
+    const isFile = await utils.isFile(resolvedBasePath);
+    const paths = isFile ? [resolvedBasePath] : await utils.getFilePaths(resolvedBasePath);
+
+    return paths.filter((path) => utils.matchesFormats(path, options.formats));
 };
 
-const processPaths = (paths, cb) => {
-    return Promise.map(paths, cb)
-        .then(_.flatten)
-        .then(_.uniq);
+const processPaths = async (paths: Array<string>, cb: (path: string) => Promise<string | Array<string>>): Promise<Array<string>> => {
+    const processedPaths = await Bluebird.map(paths, cb);
+
+    return _(processedPaths).flatten().uniq().value();
 };
 
-exports.expandPaths = (paths, expandOpts, globOpts) => {
-    expandOpts = defaults('expandOpts', expandOpts);
-    globOpts = _(defaults('globOpts', globOpts)).omitBy(_.isUndefined).value();
+export const expandPaths = async (
+    paths: string | Array<string>,
+    _expandOpts?: Partial<ExpandOpts>,
+    _globOpts?: Partial<GlobOpts>
+): Promise<Array<string>> => {
+    const expandOpts = defaults('expandOpts', _expandOpts);
+    const globOpts = _(defaults('globOpts', _globOpts)).omitBy(_.isUndefined).value();
 
     // fast-glob requires only forward-slashes (https://github.com/mrmlnc/fast-glob#pattern-syntax)
     if (globOpts.ignore) {
         globOpts.ignore = globOpts.ignore.map(p => normalize(p));
     }
-    const normalizedPaths = [].concat(paths).map(p => normalize(p));
 
-    return processPaths(normalizedPaths, (path) => getFilesByMask(path, globOpts))
-        .then((matchedPaths) => processPaths(matchedPaths, (path) => expandPath(path, expandOpts)));
+    const normalizedPaths = ([] as Array<string>).concat(paths).map(p => normalize(p));
+    const matchedPaths = await processPaths(normalizedPaths, (path) => getFilesByMask(path, globOpts));
+
+    return processPaths(matchedPaths, (path) => expandPath(path, expandOpts));
 };
 
-exports.isMask = (pattern) => {
+export const isMask = (pattern?: string): boolean => {
     if (!pattern) {
         return false;
     }
