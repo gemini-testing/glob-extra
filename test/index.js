@@ -2,7 +2,7 @@
 
 const proxyquire = require('proxyquire');
 const fs = require('fs');
-const utils = require('../lib/utils');
+const utils = require('../build/utils');
 
 describe('path-utils', () => {
     const sandbox = sinon.sandbox.create();
@@ -14,7 +14,7 @@ describe('path-utils', () => {
         sandbox.stub(process, 'cwd').returns('');
         fastGlob = sandbox.stub();
 
-        globExtra = proxyquire('../lib/index', {'fast-glob': fastGlob});
+        globExtra = proxyquire('../build/index', {'fast-glob': fastGlob});
 
         sandbox.stub(utils, 'getFilePaths');
         sandbox.stub(fs, 'statAsync').resolves({isFile: () => true});

@@ -1,7 +1,7 @@
 'use strict';
 
 const fs = require('fs');
-const utils = require('../lib/utils');
+const utils = require('../build/utils');
 
 describe('utils', () => {
     const sandbox = sinon.sandbox.create();
